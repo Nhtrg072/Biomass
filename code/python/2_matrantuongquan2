@@ -1,0 +1,108 @@
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+from google.colab import drive
+
+# =========================================================================
+# CẤU HÌNH
+# =========================================================================
+drive.mount('/content/drive')
+
+FOLDER_PATH = '/content/drive/MyDrive/data/trainingData'
+FILE_NAME = 'training_data_for_optuna_rf.csv'
+FULL_FILE_PATH = os.path.join(FOLDER_PATH, FILE_NAME)
+
+TARGET_VARIABLE = 'agbd'
+CORR_THRESHOLD = 0.95
+
+def load_and_preprocess_data(path):
+    try:
+        df = pd.read_csv(path)
+        # Loại bỏ các cột hệ thống từ GEE
+        cols_to_drop = [col for col in ['.geo', 'system:index', 'agbd_class'] if col in df.columns]
+        df_cleaned = df.drop(columns=cols_to_drop)
+        return df_cleaned
+    except FileNotFoundError:
+        print(f"Error: File not found at {path}")
+        return None
+
+def export_representative_features(df, selected_features, output_path):
+    if TARGET_VARIABLE not in selected_features:
+        features_to_export = selected_features + [TARGET_VARIABLE]
+    else:
+        features_to_export = selected_features
+
+    df_filtered = df[features_to_export].copy()
+
+    try:
+        df_filtered.to_csv(output_path, index=False)
+        reduction = df.shape[1] - df_filtered.shape[1]
+        return True
+    except Exception as e:
+        print(f"Lỗi xuất file: {e}")
+        return False
+
+def perform_feature_selection(df):
+    # 1. Tính ma trận tương quan
+    corr_matrix = df.corr().abs()
+
+    # 2. Heatmap
+    plt.figure(figsize=(20, 18))
+    sns.heatmap(corr_matrix, cmap='viridis', annot=False)
+    plt.title('Ma trận tương quan các biến')
+    plt.show()
+
+    # 3. Lọc các cặp biến trùng lặp thông tin 
+    for i in range(len(corr_matrix.columns)):
+        for j in range(i):
+            if corr_matrix.iloc[i, j] > CORR_THRESHOLD:
+                print(f"- {corr_matrix.columns[i]} & {corr_matrix.columns[j]}: {corr_matrix.iloc[i, j]:.4f}")
+
+    # 4. Chọn tập biến  tối ưu
+    corr_with_target = corr_matrix[TARGET_VARIABLE].sort_values(ascending=False)
+    remaining_features = list(corr_matrix.columns.drop(TARGET_VARIABLE))
+    feature_clusters = []
+
+    while remaining_features:
+        reference = remaining_features.pop(0)
+        current_cluster = [reference]
+        
+        # Tìm các biến tương quan cao với biến tham chiếu
+        correlated_vars = corr_matrix[reference][corr_matrix[reference] > CORR_THRESHOLD].index.tolist()
+
+        for var in correlated_vars:
+            if var in remaining_features and var != reference:
+                current_cluster.append(var)
+                remaining_features.remove(var)
+        feature_clusters.append(current_cluster)
+
+    # Chọn biến có tương quan cao nhất với target trong mỗi cụm
+    optimal_features = []
+    print("\n Kết quả Feature Selection  ")
+    for cluster in feature_clusters:
+        best_rep = max(cluster, key=lambda f: corr_with_target.get(f, 0))
+        optimal_features.append(best_rep)
+
+    print("\n" + "="*50)
+    print(f"TẬP BIẾN TỐI ƯU ({len(optimal_features)} biến):")
+    print(optimal_features)
+    print("="*50)
+
+    return optimal_features
+
+# =========================================================================
+# THỰC THI
+# =========================================================================
+main_df = load_and_preprocess_data(FULL_FILE_PATH)
+
+if main_df is not None:
+    selected_vars = perform_feature_selection(main_df)
+
+    if selected_vars:
+        base_name = os.path.splitext(FILE_NAME)[0]
+        output_name = f"{base_name}_selected.csv"
+        output_full_path = os.path.join(FOLDER_PATH, output_name)
+
+        if export_representative_features(main_df, selected_vars, output_full_path):
+            print(f"\nHoàn tất! File kết quả là: {output_name}")

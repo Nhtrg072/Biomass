@@ -1,0 +1,151 @@
+# Cài đặt GDAL
+try:
+    from osgeo import gdal
+    print("GDAL đã được cài đặt.")
+except ImportError:
+    print("Đang cài đặt GDAL...")
+    %pip install GDAL -q
+    print("Cài đặt hoàn tất.")
+    from osgeo import gdal
+
+import glob
+import os
+import rasterio
+
+# Cấu hình
+BASE_FOLDER = '/content/drive/MyDrive/data/'
+YEAR = 2020 # Chọn năm 2019-2025
+EXPORT_NAME_PREFIX = f'image_{YEAR}'
+OUTPUT_MERGED_FILE = os.path.join(BASE_FOLDER, f'image_{YEAR}.tif')
+
+# Định nghĩa tên bands theo mùa
+EXPECTED_BANDS = [
+    'B12_mean_7x7', 'B5', 'B8_contrast_7x7', 'B9_contrast_7x7', 'CRI_mean_7x7', 'MTCI',
+    'MTCI_mean_7x7', 'NDMI', 'NDRE1', 'VV', 'VH_contrast_7x7', 'dem', 'ratio_variance_7x7', 'tri']
+
+print(f"Tên bands dự kiến ({len(EXPECTED_BANDS)} bands):")
+for i, name in enumerate(EXPECTED_BANDS, 1):
+    print(f"   {i}. {name}")
+
+print(f"\nInput: {EXPORT_NAME_PREFIX}")
+print(f"Output: {os.path.basename(OUTPUT_MERGED_FILE)}")
+
+# Tìm file TIF
+search_pattern = os.path.join(BASE_FOLDER, f"{EXPORT_NAME_PREFIX}*.tif")
+split_files = sorted(glob.glob(search_pattern))
+
+if OUTPUT_MERGED_FILE in split_files:
+    split_files.remove(OUTPUT_MERGED_FILE)
+
+if not split_files:
+    print(f"Lỗi: Không tìm thấy file '{search_pattern}'")
+    print("Kiểm tra lại BASE_FOLDER và EXPORT_NAME_PREFIX")
+
+elif len(split_files) == 1:
+    print(f"Tìm thấy 1 file: {os.path.basename(split_files[0])}")
+
+    # Đổi tên file và ghi tên bands
+    temp_file = split_files[0]
+    if temp_file != OUTPUT_MERGED_FILE:
+        os.rename(temp_file, OUTPUT_MERGED_FILE)
+
+    # Ghi tên bands
+    print(f"\nĐang ghi tên bands...")
+    with rasterio.open(OUTPUT_MERGED_FILE, 'r+') as src:
+        if src.count != len(EXPECTED_BANDS):
+            print(f"Cảnh báo: File có {src.count} bands nhưng dự kiến {len(EXPECTED_BANDS)} bands")
+
+        # Ghi band descriptions
+        for i, band_name in enumerate(EXPECTED_BANDS[:src.count], 1):
+            src.set_band_description(i, band_name)
+
+        print(f"Đã ghi {min(src.count, len(EXPECTED_BANDS))} tên bands")
+
+else:
+    print(f"Tìm thấy {len(split_files)} file để ghép:")
+    for f in split_files:
+        print(f"   - {os.path.basename(f)}")
+
+    # Ghép file và ghi tên bands
+    vrt_path = OUTPUT_MERGED_FILE.replace('.tif', '.vrt')
+    temp_merged = OUTPUT_MERGED_FILE.replace('.tif', '_temp.tif')
+
+    try:
+        # Bước 1: Tạo VRT
+        print(f"\nTạo file .vrt...")
+        vrt_options = gdal.BuildVRTOptions(
+            srcNodata=-9999,
+            VRTNodata=-9999
+        )
+        gdal.BuildVRT(vrt_path, split_files, options=vrt_options)
+        print("VRT thành công")
+
+        # Callback progress
+        def gdal_progress_callback(complete, message, user_data):
+            percent = int(complete * 100)
+            print(f"   Tiến trình: {percent}%", end='\r')
+            if percent == 100:
+                print("\n")
+            return 1
+
+        # Bước 2: Ghép file
+        print(f"\nGhép và nén TIF...")
+        translate_options = gdal.TranslateOptions(
+            format='GTiff',
+            creationOptions=[
+                'COMPRESS=LZW',
+                'BIGTIFF=YES'
+            ],
+            noData=-9999,
+            callback=gdal_progress_callback
+        )
+
+        gdal.Translate(temp_merged, vrt_path, options=translate_options)
+        print("Ghép file thành công")
+
+        # Bước 3: Ghi tên bands
+        print(f"\nGhi tên bands...")
+
+        with rasterio.open(temp_merged, 'r+') as src:
+            if src.count != len(EXPECTED_BANDS):
+                print(f"Cảnh báo: File có {src.count} bands nhưng dự kiến {len(EXPECTED_BANDS)} bands")
+
+            # Ghi band descriptions
+            for i, band_name in enumerate(EXPECTED_BANDS[:src.count], 1):
+                src.set_band_description(i, band_name)
+
+            print(f"Đã ghi {min(src.count, len(EXPECTED_BANDS))} tên bands")
+
+        # Đổi tên file temp thành file chính thức
+        os.rename(temp_merged, OUTPUT_MERGED_FILE)
+
+        print(f"\nHoàn tất! File: {os.path.basename(OUTPUT_MERGED_FILE)}")
+        print(f"Dung lượng: {os.path.getsize(OUTPUT_MERGED_FILE)/1024/1024:.1f} MB")
+
+        # Xóa file trung gian
+        os.remove(vrt_path)
+        print("Đã xóa file .vrt")
+
+    except Exception as e:
+        print(f"\nLỗi: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Dọn dẹp
+        if os.path.exists(vrt_path):
+            os.remove(vrt_path)
+        if os.path.exists(temp_merged):
+            os.remove(temp_merged)
+
+# Kiểm tra kết quả
+if os.path.exists(OUTPUT_MERGED_FILE):
+    print("\nKiểm tra file kết quả:")
+
+    with rasterio.open(OUTPUT_MERGED_FILE) as src:
+        print(f"Kích thước: {src.height}x{src.width}, Bands: {src.count}")
+        print(f"CRS: {src.crs}, NoData: {src.nodata}")
+        print(f"\nTên các bands:")
+
+        for i in range(1, src.count + 1):
+            band_desc = src.descriptions[i-1]
+            print(f"   Band {i}: {band_desc if band_desc else '(không có tên)'}")
