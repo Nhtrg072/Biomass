@@ -1,0 +1,51 @@
+# =========================================================================
+# RFE + OPTUNA
+# =========================================================================
+
+def main():
+    # Bước 1: Tải dữ liệu
+    X, y = load_and_prepare_data(FULL_INPUT_PATH, TARGET_VARIABLE)
+    if X is None:
+        print(f"Lỗi: Không tìm thấy hoặc không đọc được file.")
+        return
+
+    # Bước 2: CHIA DỮ LIỆU 
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=42)
+
+    # Bước 3: Tối ưu tham số CHỈ TRÊN TẬP TRAIN
+    optimized_params = optimize_lgbm_params(X_train, y_train, N_TRIALS, OPTUNA_TIMEOUT, VALIDATION_SIZE)
+    print(" Tối ưu hoàn thành.")
+
+    # Bước 4: RFE CHỈ TRÊN TẬP TRAIN
+    rfe = SimpleRFE(
+        n_features_to_select=N_FEATURES_TO_SELECT,
+        lgbm_params=optimized_params,
+        val_size=VALIDATION_SIZE
+    )
+    rfe.fit(X_train, y_train)
+    selected_features = rfe.selected_features_
+    print(f" Đã chọn {len(selected_features)} biến.")
+
+    # Bước 5: Đánh giá cuối cùng trên tập TEST
+    metrics = get_final_metrics(selected_features, X_train, X_test, y_train, y_test, optimized_params)
+
+    # Bước 6: In kết quả cuối cùng
+    print("\n" + "="*50)
+    print(" KẾT QUẢ ")
+    print("="*50)
+    print(f"{len(selected_features)} BIẾN ĐƯỢC CHỌN:")
+    print(selected_features)
+    print("\n" + "-"*50)
+    print(" THAM SỐ TỐI ƯU CHO LIGHTGBM:")
+    for key, value in optimized_params.items():
+        print(f"   • '{key}': {value}")
+    print("\n" + "-"*60)
+    print(" HIỆU SUẤT MÔ HÌNH:")
+    print(f"   • R² trên tập huấn luyện : {metrics['train_r2']:.4f}")
+    print(f"   • R² trên tập kiểm tra    : {metrics['test_r2']:.4f} ")
+    print(f"   • RMSE trên tập kiểm tra  : {metrics['test_rmse']:.4f}")
+    print("="*50)
+
+# Chạy hàm main
+main()
+

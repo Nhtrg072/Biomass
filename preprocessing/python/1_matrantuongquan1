@@ -1,0 +1,105 @@
+# =========================================================================
+# KHAI BÁO THƯ VIỆN
+# =========================================================================
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import os
+from google.colab import drive
+
+drive.mount('/content/drive')
+
+FOLDER_PATH = '/content/drive/MyDrive/GEE_DienBien_Exports'
+FILE_NAME = 'training_data_dry_for_textures.csv'
+FULL_INPUT_PATH = os.path.join(FOLDER_PATH, FILE_NAME)
+
+TARGET_VARIABLE = 'agbd'
+CORR_THRESHOLD = 0.95
+
+# =========================================================================
+# CÁC HÀM XỬ LÝ LOGIC (FEATURE SELECTION)
+# =========================================================================
+
+def load_and_preprocess_dataset(path):
+    try:
+        df = pd.read_csv(path)
+        irrelevant_columns = [col for col in ['.geo', 'system:index', 'agbd_class'] if col in df.columns]
+        df_cleaned = df.drop(columns=irrelevant_columns)
+        return df_cleaned
+    except FileNotFoundError:
+        print(f" LỖI: Không tìm thấy tệp tin tại '{path}'")
+        return None
+
+def perform_feature_selection_analysis(df):
+    print("\n Phân tích tương quan")
+
+    # 1. Tính toán ma trận tương quan Pearson (giá trị tuyệt đối)
+    correlation_matrix = df.corr().abs()
+
+    # 2. Trực quan hóa cấu trúc tương quan
+    print("\n Heatmap ma trận tương quan...")
+    plt.figure(figsize=(22, 20))
+    sns.heatmap(correlation_matrix, cmap='viridis', annot=False)
+    plt.title('Statistical Correlation Matrix of Independent Variables', fontsize=16)
+    plt.show()
+
+    # 3. Định diện các cặp biến có độ dư thừa thông tin cao
+    print(f"\n--- Các cặp biến có tương quan vượt ngưỡng (Threshold > {CORR_THRESHOLD}) ---")
+    redundant_pairs = []
+    for i in range(len(correlation_matrix.columns)):
+        for j in range(i):
+            if correlation_matrix.iloc[i, j] > CORR_THRESHOLD:
+                pair = (correlation_matrix.columns[i], correlation_matrix.columns[j], correlation_matrix.iloc[i, j])
+                redundant_pairs.append(pair)
+                print(f"  [High Correlation] {pair[0]} & {pair[1]}: {pair[2]:.4f}")
+
+    # 4. Lọc bỏ đa cộng tuyến 
+    print(f"\n Phân nhóm các biến đồng dạng và lựa chọn biến đại diện ")
+    
+    # Tính tương quan  với biến mục tiêu
+    target_correlation = correlation_matrix[TARGET_VARIABLE].sort_values(ascending=False)
+
+    remaining_features = list(correlation_matrix.columns.drop(TARGET_VARIABLE))
+    feature_clusters = []
+
+    while remaining_features:
+        # Khởi tạo một cụm mới với biến tham chiếu đầu tiên
+        reference_feature = remaining_features.pop(0)
+        current_cluster = [reference_feature]
+
+        # Tìm các biến có độ tương quan cao với biến tham chiếu
+        highly_correlated_with_ref = correlation_matrix[reference_feature][correlation_matrix[reference_feature] > CORR_THRESHOLD].index.tolist()
+
+        # Đưa các biến này vào cùng một nhóm để xử lý dư thừa
+        for feature in highly_correlated_with_ref:
+            if feature in remaining_features and feature != reference_feature:
+                current_cluster.append(feature)
+                remaining_features.remove(feature)
+        feature_clusters.append(current_cluster)
+
+    # 5. Lựa chọn biến tối ưu từ mỗi cụm 
+    optimal_feature_subset = []
+    print("Đánh giá các nhóm biến dư thừa dựa trên giá trị Pearson đối với 'agbd':")
+    
+    for cluster in feature_clusters:
+        # Chọn biến trong cụm có mức tương quan cao nhất với biến mục tiêu agbd
+        best_representative = max(cluster, key=lambda f: target_correlation.get(f, 0))
+        optimal_feature_subset.append(best_representative)
+        
+        print(f" -> Biến đại diện được chọn: '{best_representative}' (Correlation with Target: {target_correlation.get(best_representative, 0):.4f})")
+
+    print("\n" + "="*80)
+    print("KẾT QUẢ: DANH MỤC CÁC BIẾN ĐẠI DIỆN TỐI ƯU ")
+    print(optimal_feature_subset)
+    print("="*80)
+
+# =========================================================================
+# THỰC THI QUY TRÌNH
+# =========================================================================
+
+main_dataframe = load_and_preprocess_dataset(FULL_INPUT_PATH)
+
+if main_dataframe is not None:
+    perform_feature_selection_analysis(main_dataframe)
+else:
+    print("\n Quy trình bị gián đoạn: Không thể truy cập tệp dữ liệu.")

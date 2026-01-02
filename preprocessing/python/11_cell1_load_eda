@@ -1,0 +1,89 @@
+# =========================================================================
+# Load  Training Data
+# =========================================================================
+BASE_PATH = Path("/content/drive/MyDrive/data/trainingData/")
+SEASON = 'dry'
+TRAINING_FILE = BASE_PATH / f"biomass_predicted_data_50_cleaned_P90.csv"
+
+print(f"\nLoad training data từ: {TRAINING_FILE}")
+
+# Load data
+df_raw = pd.read_csv(TRAINING_FILE)
+print(f"Đã load thành công! Shape: {df_raw.shape}")
+
+# Cấu trúc
+print("\nCấu trúc dữ liệu:")
+print(df_raw.head())
+print("\nThông tin cột:")
+print(df_raw.info())
+print("\nThống kê:")
+print(df_raw.describe())
+
+# Missing values
+missing = df_raw.isnull().sum()
+if missing.sum() == 0:
+    print("\nKhông có missing values")
+else:
+    print("\nMissing values:")
+    print(missing[missing > 0])
+
+# Định nghĩa features & target
+TARGET_COLUMN = 'agbd'
+FEATURE_COLUMNS = [
+    'agbd_predict', 'dem', 'slope', 'Dist_Rivers', 
+    'Dist_Urban', 'rainfall', 'temperature'
+]
+
+print(f"\nTarget: {TARGET_COLUMN}")
+print(f"Features ({len(FEATURE_COLUMNS)}): {FEATURE_COLUMNS}")
+
+# Phân bố Target
+print(f"\nPhân bố {TARGET_COLUMN}:")
+print(f"Min: {df_raw[TARGET_COLUMN].min():.2f}, Max: {df_raw[TARGET_COLUMN].max():.2f}")
+print(f"Mean: {df_raw[TARGET_COLUMN].mean():.2f}, Median: {df_raw[TARGET_COLUMN].median():.2f}, Std: {df_raw[TARGET_COLUMN].std():.2f}")
+
+# Outliers (IQR)
+Q1 = df_raw[TARGET_COLUMN].quantile(0.25)
+Q3 = df_raw[TARGET_COLUMN].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - 1.5 * IQR
+upper_bound = Q3 + 1.5 * IQR
+n_outliers = ((df_raw[TARGET_COLUMN] < lower_bound) | (df_raw[TARGET_COLUMN] > upper_bound)).sum()
+
+print(f"\nOutliers: {n_outliers:,} ({n_outliers/len(df_raw)*100:.2f}%)")
+print(f"Bounds: [{lower_bound:.2f}, {upper_bound:.2f}]")
+
+# Chia train/validation
+VALIDATION_SPLIT = 0.2
+RANDOM_STATE = 42
+
+df_train, df_val = train_test_split(df_raw, test_size=VALIDATION_SPLIT, random_state=RANDOM_STATE)
+
+print(f"\nĐã chia train/val ({VALIDATION_SPLIT*100:.0f}% validation)")
+print(f"Train: {len(df_train):,}, Val: {len(df_val):,}")
+
+# Tính delta
+df_raw['delta_agb'] = df_raw[TARGET_COLUMN] - df_raw['agbd_predict']
+
+print(f"\nDelta AGB (2024 vs 2019):")
+print(f"Mean: {df_raw['delta_agb'].mean():.2f}, Median: {df_raw['delta_agb'].median():.2f}, Std: {df_raw['delta_agb'].std():.2f}")
+print(f"Tăng: {(df_raw['delta_agb'] > 0).sum()} ({(df_raw['delta_agb'] > 0).mean()*100:.1f}%)")
+print(f"Giảm: {(df_raw['delta_agb'] < 0).sum()} ({(df_raw['delta_agb'] < 0).mean()*100:.1f}%)")
+print(f"Tăng mạnh (>5): {(df_raw['delta_agb'] > 5).sum()}")
+
+# Vẽ histogram delta
+plt.figure(figsize=(10, 5))
+sns.histplot(df_raw['delta_agb'], bins=50, kde=True)
+plt.title('Phân bố Delta AGB (2024 - 2019)')
+plt.xlabel('Delta AGB')
+plt.ylabel('Tần suất')
+plt.axvline(0, color='red', linestyle='--', label='Ngưỡng (0)')
+plt.legend()
+plt.grid(alpha=0.3)
+plt.show()
+
+# Phân bố theo quartile
+df_raw['agb_quartile'] = pd.qcut(df_raw['agbd_predict'], q=4, labels=['Q1-Low', 'Q2', 'Q3', 'Q4-High'])
+print("\nDelta theo mức AGB ban đầu:")
+print(df_raw.groupby('agb_quartile')['delta_agb'].mean())
+

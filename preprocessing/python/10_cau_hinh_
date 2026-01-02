@@ -1,0 +1,23 @@
+# Cấu hình
+!pip install lightgbm optuna -U kaleido rasterio -q
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Import thư viện
+import os
+import numpy as np
+import pandas as pd
+import rasterio
+import lightgbm as lgb
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
+import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import gc
+from tqdm import tqdm
+import optuna
+import warnings
+warnings.filterwarnings('ignore')
+

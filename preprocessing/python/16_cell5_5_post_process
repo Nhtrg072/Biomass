@@ -1,0 +1,89 @@
+# =========================================================================
+# LỌC HẬU KỲ BẰNG LULC
+# =========================================================================
+
+# Cấu hình
+YEAR_TO_PROCESS = ENDYEAR
+
+BASE_LULC_PATH = Path("/content/drive/MyDrive/data/LULC_d4p")
+PREDICTION_PATH = Path("/content/drive/MyDrive/data/agbdMap_all_PREDICTED")
+FINAL_PATH = Path("/content/drive/MyDrive/data/Biomass_all_Final")
+
+LULC_FILENAME = f'LULC_{YEAR_TO_PROCESS}.tif'
+
+RAW_BIOMASS_FILE = PREDICTION_PATH / f'agbd_SSP{SCRIPT}_{YEAR_TO_PROCESS}_all.tif'
+
+OUTPUT_ITERATION_FILE = PREDICTION_PATH / f'agbd_SSP{SCRIPT}_for_predicted_{YEAR_TO_PROCESS}_all.tif'
+OUTPUT_REPORT_FILE = FINAL_PATH / f'agbd_SSP{SCRIPT}_for_report_{YEAR_TO_PROCESS}_all.tif'
+
+CLASSES_TO_KEEP = [2, 4, 5, 8, 11]
+CLASSES_FOREST_ONLY = [2]
+
+CHUNK_SIZE = 1000
+
+print(f"Cell 5.5 cho năm: {YEAR_TO_PROCESS}")
+print(f"Input AGBD: {RAW_BIOMASS_FILE.name}")
+print(f"Input LULC: {LULC_FILENAME}")
+print(f"Lọc Keep: {CLASSES_TO_KEEP}, Forest: {CLASSES_FOREST_ONLY}")
+
+# Kiểm tra file
+INPUT_LULC_FILE = BASE_LULC_PATH / LULC_FILENAME
+
+if not RAW_BIOMASS_FILE.exists():
+    raise FileNotFoundError(f"Không tìm thấy file AGBD: {RAW_BIOMASS_FILE}")
+if not INPUT_LULC_FILE.exists():
+    raise FileNotFoundError(f"Không tìm thấy file LULC: {INPUT_LULC_FILE}")
+
+print("Đã tìm thấy file AGBD và LULC")
+
+# Xử lý lọc theo chunks
+try:
+    with rasterio.open(RAW_BIOMASS_FILE) as src_biomass, \
+         rasterio.open(INPUT_LULC_FILE) as src_lulc, \
+         rasterio.open(OUTPUT_ITERATION_FILE, 'w', **src_biomass.profile) as dst_iteration, \
+         rasterio.open(OUTPUT_REPORT_FILE, 'w', **src_biomass.profile) as dst_report:
+
+        height = src_biomass.height
+        width = src_biomass.width
+        nodata = src_biomass.nodata
+        n_chunks = int(np.ceil(height / CHUNK_SIZE))
+
+        print(f"\nĐang xử lý {n_chunks} chunks...")
+
+        for i in tqdm(range(n_chunks), desc="Lọc AGBD"):
+            row_start = i * CHUNK_SIZE
+            row_end = min((i + 1) * CHUNK_SIZE, height)
+            window = rasterio.windows.Window(0, row_start, width, row_end - row_start)
+
+            biomass_chunk = src_biomass.read(1, window=window)
+            lulc_chunk = src_lulc.read(1, window=window)
+
+            # File 1: Iteration
+            biomass_iteration_out = biomass_chunk.copy()
+            negative_noise_mask = (biomass_iteration_out < 0) & (biomass_iteration_out != nodata)
+            biomass_iteration_out[negative_noise_mask] = 0
+            mask_iteration = np.isin(lulc_chunk, CLASSES_TO_KEEP, invert=True)
+            biomass_iteration_out[mask_iteration] = nodata
+            dst_iteration.write(biomass_iteration_out, 1, window=window)
+
+            # File 2: Report
+            biomass_report_out = biomass_chunk.copy()
+            negative_noise_mask_report = (biomass_report_out < 0) & (biomass_report_out != nodata)
+            biomass_report_out[negative_noise_mask_report] = 0
+            mask_report = np.isin(lulc_chunk, CLASSES_FOREST_ONLY, invert=True)
+            biomass_report_out[mask_report] = nodata
+            dst_report.write(biomass_report_out, 1, window=window)
+
+            del biomass_chunk, lulc_chunk, mask_iteration, mask_report
+            del biomass_iteration_out, biomass_report_out, negative_noise_mask, negative_noise_mask_report
+            gc.collect()
+
+
+    print(f"\nĐã xuất 2 file:")
+    print(f"1. Vòng lặp tiếp theo: {OUTPUT_ITERATION_FILE.name}")
+    print(f"2. Báo cáo (chỉ rừng): {OUTPUT_REPORT_FILE.name}")
+    print(f"\nSẵn sàng vòng lặp mới ({YEAR_TO_PROCESS + 5})")
+
+except Exception as e:
+    print(f"\nLỗi: {e}")
+    print("Kiểm tra lại kích thước, CRS và đường dẫn")

@@ -1,0 +1,71 @@
+# =========================================================================
+# KHAI BÁO
+# =========================================================================
+
+import pandas as pd
+import lightgbm as lgb
+import numpy as np
+import os
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+PERCENTILE_TO_REMOVE = 10 # Phần trăm dữ liệu cần loại bỏ
+TARGET_VARIABLE = 'agbd'
+
+FOLDER_PATH = '/content/drive/MyDrive/data/trainingData/' # Thư mục 
+FILE_NAME = f'biomass_predicted_data.csv' # Tên file dữ liệu đầu vào
+FULL_INPUT_PATH = os.path.join(FOLDER_PATH, FILE_NAME)
+
+# =========================================================================
+# LỌC
+# =========================================================================
+
+# Bước 1: Tải dữ liệu
+try:
+    df = pd.read_csv(FULL_INPUT_PATH)
+    df.dropna(inplace=True)
+    print(f" Số điểm dữ liệu ban đầu: {len(df)}")
+except FileNotFoundError:
+    print(f" LỖI: Không tìm thấy file.")
+    import sys
+    sys.exit()
+
+X = df.drop(columns=[TARGET_VARIABLE])
+y = df[TARGET_VARIABLE]
+print(f" - Dữ liệu có {X.shape[1]} biến dự báo.")
+
+# Bước 2: Huấn luyện thăm dò bằng mô hình LightGBM
+initial_model = lgb.LGBMRegressor(random_state=42, n_jobs=-1)
+initial_model.fit(X, y)
+
+# Bước 3: Dự đoán và tính sai số
+predictions = initial_model.predict(X)
+df['error'] = np.abs(y - predictions)
+print(" Tính sai số hoàn tất.")
+
+# Bước 4: Lọc bỏ dữ liệu
+cutoff_threshold = np.percentile(df['error'], 100 - PERCENTILE_TO_REMOVE)
+print(f" - Ngưỡng sai số được xác định là: {cutoff_threshold:.4f}")
+
+df_cleaned = df[df['error'] <= cutoff_threshold].copy()
+df_cleaned.drop(columns=['error'], inplace=True)
+
+# Thống kê
+print("\n THỐNG KÊ LỌC DỮ LIỆU:")
+print(f" - Số điểm ban đầu      : {len(df)}")
+print(f" - Số điểm còn lại (sạch): {len(df_cleaned)}")
+print(f" - Số điểm đã loại bỏ   : {len(df) - len(df_cleaned)}")
+
+# Bước 5: Lưu kết quả
+if PERCENTILE_TO_REMOVE == int(PERCENTILE_TO_REMOVE):
+    pct_str = str(int(PERCENTILE_TO_REMOVE))
+else:
+    pct_str = str(PERCENTILE_TO_REMOVE).replace('.', '_')
+
+output_filename = f'biomass_predicted_data_{pct_str}.csv'
+output_path_on_drive = os.path.join(FOLDER_PATH, output_filename)
+
+df_cleaned.to_csv(output_path_on_drive, index=False)
+
+print(" File kết quả tên:", output_filename)

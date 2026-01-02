@@ -1,0 +1,77 @@
+# =========================================================================
+# DỰ ĐOÁN BẢN ĐỒ AGBD CHO NĂM 2019-2025
+# =========================================================================
+
+# Cấu hình
+BASE_FOLDER = '/content/drive/MyDrive/data/'
+YEAR = 2024 # Chọn năm 2019-2025
+SENTINEL_FILE = os.path.join(BASE_FOLDER, f'image_{YEAR}.tif')
+OUTPUT_FILE = os.path.join(BASE_FOLDER, f'agbdMap/agbd_{YEAR}_{SEASON}.tif')
+
+try:
+    # Bước 1: Mở file nguồn và đích
+    with rasterio.open(SENTINEL_FILE) as src:
+        # Lấy thông tin file
+        profile = src.profile
+        height, width = src.shape
+        nodata_value = src.nodata
+
+        print(f"\nKích thước: {height}x{width}, Bands: {src.count}, NoData: {nodata_value}")
+
+        profile.update(
+            count=1,
+            dtype='float32',
+            compress='lzw',
+            nodata=-9999.0
+        )
+        output_nodata = -9999.0
+
+        # Mở file đích để ghi
+        with rasterio.open(OUTPUT_FILE, 'w', **profile) as dst:
+
+            # Lấy danh sách các khối
+            windows = list(src.block_windows(1))
+
+            print(f"\nXử lý {len(windows)} khối...")
+
+            # Bước 2: Xử lý từng khối
+            for idx, (ji, window) in enumerate(tqdm(windows, desc='Processing', ncols=100)):
+
+                # Đọc dữ liệu khối
+                block_data = src.read(window=window)
+
+                # Chuẩn bị dữ liệu
+                n_bands, h_block, w_block = block_data.shape
+                n_pixels_block = h_block * w_block
+                pixels_for_pred = block_data.reshape(n_bands, n_pixels_block).T
+                block_predictions = np.full(n_pixels_block, output_nodata, dtype=np.float32)
+
+                # Xử lý NoData
+                if nodata_value is not None:
+                    valid_mask = (block_data[0] != nodata_value).reshape(n_pixels_block)
+                    valid_data = pixels_for_pred[valid_mask]
+
+                    if valid_data.shape[0] > 0:
+                        predictions = final_model_for_mapping.predict(valid_data)
+                        block_predictions[valid_mask] = predictions
+
+                else:
+                    if n_pixels_block > 0:
+                        block_predictions = final_model_for_mapping.predict(pixels_for_pred)
+
+                agbd_block = block_predictions.reshape(h_block, w_block)
+
+                # Ghi vào file
+                dst.write(agbd_block.astype(np.float32), 1, window=window)
+                del block_data, pixels_for_pred, block_predictions, agbd_block
+
+    print(f"\nĐã lưu {OUTPUT_FILE}")
+
+except FileNotFoundError:
+    print(f"\nLỗi: Không tìm thấy file {SENTINEL_FILE}")
+    print("Kiểm tra lại đường dẫn hoặc export ảnh từ GEE trước")
+
+except Exception as e:
+    print(f"\nLỗi: {e}")
+    import traceback
+    traceback.print_exc()
