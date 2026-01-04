@@ -1,87 +1,95 @@
-# Biomass
-Calculate aboveground biomass density 
+# Dự báo sinh khối rừng sử dụng Google Earth Engine và Machine Learning
 
-## PHẦN A: TIỀN XỬ LÝ DỮ LIỆU GEDI (File 1-4)
+Dự án nghiên cứu và dự báo sinh khối rừng (Above Ground Biomass - AGBD) sử dụng dữ liệu viễn thám Sentinel-1, Sentinel-2 và GEDI kết hợp mô hình LightGBM.
 
-### `1_matrantuongquan1`
-- Tính ma trận tương quan giữa các biến
-- Vẽ heatmap tương quan
-- Tìm các cặp biến có tương quan cao (> 0.95)
 
-### `2_matrantuongquan2`
-- Phân tích tương quan và loại bỏ biến dư thừa
-- Xuất file CSV với biến đã chọn
+## 📂 Cấu trúc dự án
 
-### `3_loc_nhieu_GEDI`
-- Lọc nhiễu GEDI bằng LightGBM
-- Loại bỏ % điểm có error cao nhất
+```
+├── GEE/                        # Code Google Earth Engine
+│   ├── final_image.java        # Tiền xử lý Sentinel & xuất ảnh composite
+│   ├── lulc.java               # Xử lý dữ liệu LULC & mặt nạ rừng
+│   └── trainingdata.java       # Xuất dữ liệu training
+│
+├── python/                     # Scripts Python xử lý dữ liệu & training model
+│   ├── 1-4: Tiền xử lý GEDI
+│   ├── 5-9: Train mô hình lịch sử
+│   └── 10-16: Dự báo tương lai
+│
+└── README.md         
+```
 
-### `4_loc_duplicates_GEDI`
-- Xử lý duplicates trong dữ liệu
-- Aggregate bằng P90
-- Phân tích độ biến thiên
+## 📊 Dữ liệu
 
----
+### Nguồn dữ liệu
+- **Sentinel-1 (SAR):** VV, VH, VH/VV + texture features từ GEE
+- **Sentinel-2 (Optical):** Các band quang học + chỉ số thực vật + texture từ GEE
+- **GEDI (LiDAR):** Dữ liệu sinh khối thực tế từ vệ tinh từ Earthdata
+- **Topography:** Độ cao, độ dốc, đô gồ ghề,... từ DEM từ GEE 
+- **LULC:** Dữ liệu lớp phủ để lọc vùng rừng từ ERSI
 
-## PHẦN B: ĐÀO TẠO MÔ HÌNH 2019 (File 5-9)
+### Quy trình xử lý
+1. **Tiền xử lý dữ liệu GEDI:** Lọc nhiễu, xử lý duplicates, tính ma trận tương quan
+2. **Tiền xử lý ảnh vệ tinh:** Lọc mây, tính chỉ số, tính texture, gộp ảnh composite
+3. **Feature selection:** RFE + tối ưu hóa với Optuna
 
-### `5_cell1_colab_khai_bao`
-- Cài thư viện, mount Drive
-- Khai báo hàm và biến
+## 🧠 Mô hình Machine Learning
 
-### `6_cell2_colab_RFE_Optuna'`
-- RFE (Recursive Feature Elimination)
-- Tối ưu hyperparameters bằng Optuna
-- Chọn features tốt nhất
+### Thuật toán
+- **LightGBM:** Gradient Boosting Decision Tree
+- **Hyperparameter Tuning:** Optuna 
+- **Feature Selection:** Recursive Feature Elimination (RFE)
 
-### `7_cell3_colab_train_mo_hinh`
-- Train model LightGBM với features đã chọn
-- Đánh giá trên train/valid/test
 
-### `8_cell4_colab_Scatter_Plots`
-- Vẽ scatter plots với density
-- Font Times New Roman
+## 🛠️ Quy trình thực hiện
 
-### `9_cell5_colab_create_map_2019_2025`
-- Dự đoán bản đồ AGBD cho năm 2019-2025
-- Xử lý theo chunks
+### PHẦN A: Tiền xử lý trên Google Earth Engine
+1. Chạy `final_image.java` → Xuất ảnh composite Sentinel
+2. Chạy `lulc.java` → Xuất mặt nạ rừng
+3. Chạy `trainingdata.java` → Xuất dữ liệu training CSV
 
-### `bonus_merge_sentinel`
-- Ghép nhiều file Sentinel thành 1 file
-- Ghi tên bands
-- Nén LZW
+### PHẦN B: Tiền xử lý dữ liệu GEDI (Python)
+4. `1_matrantuongquan1` → Phân tích tương quan biến để tính texture
+5. `2_matrantuongquan2` → Loại bỏ biến dư thừa
+6. `3_loc_nhieu_GEDI` → Lọc nhiễu 
+7. `4_loc_duplicates_GEDI` → Xử lý duplicates
 
----
+### PHẦN C: Đào tạo mô hình cho năm 2019
+8. `5_cell1_colab_khai_bao` → Cài đặt môi trường
+9. `6_cell2_colab_RFE_Optuna` → Tối ưu bằng RFE và Optuna
+10. `7_cell3_colab_train_mo_hinh` → Train model
+11. `8_cell4_colab_Scatter_Plots` → Đánh giá kết quả
+12. `9_cell5_colab_create_map_2019_2025` → Tạo bản đồ sinh khối
 
-## PHẦN C: DỰ BÁO TƯƠNG LAI (File 10-16)
+### PHẦN D: Dự báo tương lai (2025-2050)
+13. `10_cau_hinh_` → Setup môi trường Colab
+14. `11_cell1_load_data` → Load data
+15. `12_cell2_loc_nhieu` → Lọc nhiễu
+16. `13_cell3_optuna` → Tối ưu hyperparameters
+17. `14_cell4_train_model` → Train model dự báo
+18. `15_cell5_prediction` → Dự đoán bản đồ
+19. `16_cell5_5_post_process` → Post-processing với LULC
 
-### `10_setup_colab`
-- Kết nối Google Drive
-- Cài thư viện: lightgbm, optuna, rasterio
-- Chạy đầu tiên 1 lần
+**Lặp lại bước 18-19 để dự báo các năm tiếp theo (2030, 2035, 2040, ...)**
 
-### `11_cell1_load_eda`
-- Load dữ liệu training
-- Phân tích thống kê, outliers
-- Vẽ biểu đồ Delta AGB
+## 🎯 Kết quả
+- Mô hình ước tính sinh khối lịch sử chu kì 1 năm
+- Mô hình dự báo sinh khối tương lai chu kì 5 năm
+- Bản đồ sinh khối rừng độ phân giải 30m
 
-### `12_cell2_loc_nhieu`
-- Lọc nhiễu bằng residual
 
-### `13_cell3_optuna`
-- Tối ưu hyperparameters
 
-### `14_cell4_train_model`
-- Train model cuối cùng
-- Vẽ scatter plots
+## 📝 Lưu ý
 
-### `15_cell5_prediction`
-- Dự đoán bản đồ sinh khối
+- Dữ liệu được xử lý theo chunks để tối ưu bộ nhớ
+- Sử dụng nén LZW khi xuất file raster
+- Chạy trên Google Colab với GPU để tăng tốc
+- Cần kết nối Google Drive để lưu trữ dữ liệu
 
-### `16_cell5_5_post_process`
-- Lọc theo LULC
+## 👤 Tác giả
 
-### Vòng lặp dự báo nhiều năm
-1. Cell 15: `STARTYEAR = 2025` → Cell 16 → tạo file 2030
-2. Cell 15: `STARTYEAR = 2030`, cập nhật `agbd_predict` → Cell 16 → tạo file 2035
-3. Lặp lại...
+**Nguyễn Hữu Trường**
+
+Viện Công nghệ Hàng không Vũ trụ - Trường Đại học Công nghệ - ĐHQG Hà Nội
+
+**Last updated:** January 2026
