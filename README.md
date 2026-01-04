@@ -78,14 +78,6 @@ Dự án nghiên cứu và dự báo sinh khối rừng (Above Ground Biomass - 
 - Bản đồ sinh khối rừng độ phân giải 30m
 
 
-
-## 📝 Lưu ý
-
-- Dữ liệu được xử lý theo chunks để tối ưu bộ nhớ
-- Sử dụng nén LZW khi xuất file raster
-- Chạy trên Google Colab với GPU để tăng tốc
-- Cần kết nối Google Drive để lưu trữ dữ liệu
-
 ## 👤 Tác giả
 
 **Nguyễn Hữu Trường**
